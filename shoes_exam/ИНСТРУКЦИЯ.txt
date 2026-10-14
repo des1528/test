@@ -67,8 +67,10 @@
      pip install pymysql cryptography
    (cryptography нужна pymysql для входа в MySQL 8 со стандартным
    способом аутентификации.)
-3. Открыть app.py и в 5-й строке указать свой пароль от MySQL:
-     DB = dict(host="localhost", user="root", password="ВАШ_ПАРОЛЬ", ...)
+3. Открыть app.py и в 5-й строке указать свой порт и пароль от MySQL:
+     DB = dict(host="localhost", port=3306, user="root", password="ВАШ_ПАРОЛЬ", ...)
+   Порт смотреть в Workbench на плитке подключения (например localhost:3308).
+   Порт пишется ТОЛЬКО в port=, а не в host: host="127.0.0.1:3308" — ошибка.
 4. Запустить ИЗ ПАПКИ shoes_exam (иначе не найдётся Icon.png):
      python app.py
 5. Тестовые учётные записи (логин / пароль):
@@ -86,6 +88,9 @@
        заглушки, показывают сообщение «В разработке».
 
 Возможные ошибки:
+  - «Can't connect to MySQL server on '127.0.0.1:3308' (getaddrinfo failed)» —
+    порт записан внутрь host. Нужно: host="127.0.0.1", port=3308.
+  - «Can't connect ... (10061)» — неверный порт или MySQL Server не запущен.
   - «Access denied for user 'root'» — неверный пароль в строке DB.
   - «Unknown database 'shoes'» — не выполнен db.sql.
   - «RuntimeError: 'cryptography' package is required» — не выполнен

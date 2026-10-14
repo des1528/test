@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import pymysql
 
-DB = dict(host="localhost", user="root", password="root", database="shoes", charset="utf8mb4")
+DB = dict(host="localhost", port=3306, user="root", password="root", database="shoes", charset="utf8mb4")
 FONT = ("Times New Roman", 12)
 COLUMNS = ("Артикул", "Наименование", "Категория", "Описание", "Производитель", "Поставщик",
            "Цена", "Цена со скидкой", "Ед.", "На складе", "Скидка, %")
