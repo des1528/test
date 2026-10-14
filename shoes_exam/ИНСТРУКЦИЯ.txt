@@ -1,0 +1,93 @@
+ООО «Обувь» — пробный экзамен. Пошаговая инструкция
+=================================================
+
+Состав папки shoes_exam:
+  db.sql      — скрипт базы данных (структура в 3НФ + все данные из Excel)
+  app.py      — приложение на Python (tkinter + pymysql)
+  Icon.png    — иконка/логотип из ресурсов
+  ИНСТРУКЦИЯ.txt, ОБЪЯСНЕНИЕ_КОДА.txt
+
+
+ЧАСТЬ 1. Как Excel приведён к 3 нормальной форме
+-------------------------------------------------
+1. Во все таблицы добавлен первичный ключ id (AUTO_INCREMENT).
+2. Повторяющиеся текстовые значения вынесены в справочники, а в основных
+   таблицах вместо текста хранится внешний ключ (..._id):
+     Tovar.xlsx:  Категория      -> categories     (products.category_id)
+                  Производитель  -> manufacturers  (products.manufacturer_id)
+                  Поставщик      -> suppliers      (products.supplier_id)
+                  Единица изм.   -> units          (products.unit_id)
+     user_import: Роль           -> roles          (users.role_id)
+     Заказ_import: Статус        -> statuses       (orders.status_id)
+                   Адрес пункта  -> pickup_points  (orders.pickup_point_id,
+                                    номер = номер строки в «Пункты выдачи_import»)
+                   ФИО клиента   -> users          (orders.user_id)
+3. Ячейка «Артикул заказа» (например «А112Т4, 2, F635R4, 2») содержала
+   несколько значений сразу — это нарушение 1НФ. Она разбита на отдельную
+   таблицу order_items (order_id, product_id, quantity): одна строка = один
+   товар в заказе.
+4. Исправлены ошибки в данных:
+     - у заказа №7 дата «30.02.2025» не существует -> заменена на 2025-02-28;
+     - статус «Новый » с лишним пробелом -> «Новый»;
+     - пустые колонки в файле заказов отброшены;
+     - пустое фото у товара -> NULL.
+
+Схема связей:
+  roles 1—∞ users 1—∞ orders ∞—1 statuses
+                       orders ∞—1 pickup_points
+                       orders 1—∞ order_items ∞—1 products
+  products ∞—1 categories / manufacturers / suppliers / units
+
+
+ЧАСТЬ 2. Разворачивание БД в MySQL Workbench
+--------------------------------------------
+1. Запустить MySQL Workbench и открыть подключение «Local instance MySQL»
+   (ввести пароль root, заданный при установке MySQL Server).
+2. Меню File -> Open SQL Script... -> выбрать shoes_exam/db.sql.
+3. Нажать кнопку с молнией «Execute» (или Ctrl+Shift+Enter).
+   Скрипт сам удалит старую базу shoes (если была), создаст новую,
+   создаст 11 таблиц и заполнит их данными.
+4. В панели Navigator (слева, вкладка Schemas) нажать значок обновления —
+   появится схема shoes.
+5. Проверка: открыть новую вкладку запроса и выполнить
+     SELECT * FROM shoes.products;      -- 30 строк
+     SELECT * FROM shoes.users;         -- 10 строк
+     SELECT * FROM shoes.order_items;   -- 20 строк
+6. ER-диаграмма (нужна по заданию в PDF):
+   Database -> Reverse Engineer... -> Next -> выбрать схему shoes ->
+   Next ... Execute -> Finish. Откроется диаграмма со всеми таблицами
+   и связями. Затем File -> Export -> Export as PDF... -> сохранить
+   er_diagram.pdf в папку shoes_exam.
+
+
+ЧАСТЬ 3. Запуск приложения на Python
+------------------------------------
+1. Нужен Python 3.10+ (tkinter входит в стандартную установку Windows).
+2. Открыть терминал (cmd) в папке shoes_exam и установить библиотеки:
+     pip install pymysql cryptography
+   (cryptography нужна pymysql для входа в MySQL 8 со стандартным
+   способом аутентификации.)
+3. Открыть app.py и в 5-й строке указать свой пароль от MySQL:
+     DB = dict(host="localhost", user="root", password="ВАШ_ПАРОЛЬ", ...)
+4. Запустить ИЗ ПАПКИ shoes_exam (иначе не найдётся Icon.png):
+     python app.py
+5. Тестовые учётные записи (логин / пароль):
+     Администратор: 94d5ous@gmail.com     / uzWC67
+     Менеджер:      1diph5e@tutanota.com  / 8ntwUp
+     Клиент:        5d4zbu@tutanota.com   / rwVDh9
+   Либо кнопка «Войти как гость».
+6. Что реализовано:
+     - окно входа с логотипом, авторизация по БД, вход гостем;
+     - сообщение об ошибке при неверном пароле / недоступной БД;
+     - список товаров из БД (JOIN всех справочников), цена со скидкой;
+     - подсветка: скидка > 15% — фон #2E8B57, нет на складе — голубой;
+     - ФИО пользователя в правом верхнем углу, кнопка «Выход» на окно входа;
+     - кнопки «Заказы» (менеджер, админ) и «Добавить товар» (админ) —
+       заглушки, показывают сообщение «В разработке».
+
+Возможные ошибки:
+  - «Access denied for user 'root'» — неверный пароль в строке DB.
+  - «Unknown database 'shoes'» — не выполнен db.sql.
+  - «RuntimeError: 'cryptography' package is required» — не выполнен
+    pip install cryptography.
+  - «couldn't open "Icon.png"» — приложение запущено не из папки shoes_exam.

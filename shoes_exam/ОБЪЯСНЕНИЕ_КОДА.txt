@@ -1,0 +1,387 @@
+ОБЪЯСНЕНИЕ КОДА
+===============
+Формат: блок кода -> зачем он нужен в программе -> построчное объяснение.
+
+
+#####################################################################
+                          ФАЙЛ db.sql
+#####################################################################
+
+БЛОК 1. Создание базы
+---------------------
+SET NAMES utf8mb4;
+DROP DATABASE IF EXISTS shoes;
+CREATE DATABASE shoes CHARACTER SET utf8mb4;
+USE shoes;
+
+Назначение: готовит пустую базу shoes. Скрипт можно запускать повторно —
+каждый раз база пересоздаётся с нуля.
+  SET NAMES utf8mb4            — клиент передаёт текст в UTF-8, иначе русские
+                                 буквы превратятся в «кракозябры».
+  DROP DATABASE IF EXISTS shoes — удаляет старую базу, если она уже есть.
+  CREATE DATABASE ... utf8mb4   — создаёт базу с кодировкой для кириллицы.
+  USE shoes                     — все следующие команды выполняются в ней.
+
+
+БЛОК 2. Справочники
+-------------------
+CREATE TABLE roles (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50) NOT NULL UNIQUE);
+... categories, units, suppliers, manufacturers, statuses ...
+CREATE TABLE pickup_points (id INT AUTO_INCREMENT PRIMARY KEY, address VARCHAR(200) NOT NULL);
+
+Назначение: сюда вынесены значения, которые в Excel повторялись в каждой
+строке (роль, категория, ед. измерения, поставщик, производитель, статус,
+адрес). Это и есть приведение к 3НФ: текст хранится один раз, остальные
+таблицы ссылаются на него по id.
+  id INT AUTO_INCREMENT PRIMARY KEY — первичный ключ, номер выдаётся сам (1,2,3…).
+  name VARCHAR(50) NOT NULL         — значение справочника, пустым быть не может.
+  UNIQUE                            — запрещает дубли (две «Kari» в поставщиках).
+  pickup_points.address             — адрес без UNIQUE, адреса и так разные.
+
+
+БЛОК 3. Таблица users
+---------------------
+CREATE TABLE users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  role_id INT NOT NULL,
+  full_name VARCHAR(150) NOT NULL,
+  login VARCHAR(100) NOT NULL UNIQUE,
+  password VARCHAR(100) NOT NULL,
+  FOREIGN KEY (role_id) REFERENCES roles(id)
+);
+
+Назначение: пользователи для авторизации в приложении (из user_import.xlsx).
+  id         — ключ пользователя.
+  role_id    — ссылка на роль (вместо текста «Администратор»).
+  full_name  — ФИО, выводится в правом верхнем углу приложения.
+  login      — логин, UNIQUE: двух одинаковых логинов быть не может.
+  password   — пароль.
+  FOREIGN KEY (role_id) REFERENCES roles(id) — ссылочная целостность:
+               нельзя указать несуществующую роль и удалить используемую.
+
+
+БЛОК 4. Таблица products
+------------------------
+CREATE TABLE products (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  article VARCHAR(10) NOT NULL UNIQUE,
+  name VARCHAR(100) NOT NULL,
+  unit_id INT NOT NULL,
+  price DECIMAL(10,2) NOT NULL CHECK (price >= 0),
+  supplier_id INT NOT NULL,
+  manufacturer_id INT NOT NULL,
+  category_id INT NOT NULL,
+  discount INT NOT NULL DEFAULT 0,
+  quantity INT NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+  description TEXT,
+  photo VARCHAR(255),
+  FOREIGN KEY (...) REFERENCES ...(id)  x4
+);
+
+Назначение: товары из Tovar.xlsx — главная таблица, её показывает приложение.
+  article       — артикул (А112Т4…), UNIQUE, т.к. артикул однозначно задаёт товар.
+  name          — наименование (Ботинки, Туфли…).
+  unit_id, supplier_id, manufacturer_id, category_id — ссылки на справочники.
+  price DECIMAL(10,2) — цена с копейками (по заданию «может включать сотые»),
+                  CHECK (price >= 0) — цена не может быть отрицательной.
+  discount      — действующая скидка в процентах, по умолчанию 0.
+  quantity      — количество на складе, CHECK запрещает отрицательное.
+  description   — описание, TEXT — длинная строка.
+  photo         — имя файла фото (1.jpg…), может быть NULL (нет фото).
+  4 строки FOREIGN KEY — связь со справочниками units/suppliers/manufacturers/categories.
+
+
+БЛОК 5. Таблицы orders и order_items
+------------------------------------
+CREATE TABLE orders (
+  id, order_date DATE, delivery_date DATE,
+  pickup_point_id, user_id, code INT, status_id,
+  FOREIGN KEY ... pickup_points / users / statuses
+);
+CREATE TABLE order_items (
+  order_id INT NOT NULL,
+  product_id INT NOT NULL,
+  quantity INT NOT NULL,
+  PRIMARY KEY (order_id, product_id),
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+Назначение: заказы из Заказ_import.xlsx. В Excel в одной ячейке было
+«А112Т4, 2, F635R4, 2» (несколько товаров) — это нарушает 1НФ, поэтому
+состав заказа вынесен в order_items.
+  orders.id                — номер заказа (как в Excel).
+  order_date/delivery_date — дата заказа и доставки, тип DATE.
+  pickup_point_id          — ссылка на пункт выдачи.
+  user_id                  — ссылка на клиента (вместо ФИО).
+  code                     — код для получения.
+  status_id                — ссылка на статус («Завершен», «Новый»).
+  order_items.order_id     — какой заказ.
+  order_items.product_id   — какой товар.
+  order_items.quantity     — сколько штук.
+  PRIMARY KEY (order_id, product_id) — составной ключ: один товар один раз в заказе.
+  ON DELETE CASCADE        — при удалении заказа его строки удаляются сами.
+  FOREIGN KEY (product_id) без CASCADE — товар, который есть в заказе,
+                             удалить нельзя (требование модуля 3).
+
+
+БЛОК 6. Данные (INSERT)
+-----------------------
+INSERT INTO roles (name) VALUES ('Администратор'), ('Менеджер'), ...;
+...
+INSERT INTO products (article, name, unit_id, ...) VALUES ('А112Т4', 'Ботинки', 1, 4990, 1, 1, 1, 3, 6, '...', '1.jpg'), ...;
+INSERT INTO orders (id, order_date, ...) VALUES (1, '2025-02-27', '2025-04-20', 1, 4, 901, 1), ...;
+INSERT INTO order_items (order_id, product_id, quantity) VALUES (1, 1, 2), (1, 2, 2), ...;
+
+Назначение: перенос данных из Excel в БД. Сначала заполняются справочники,
+потом таблицы, которые на них ссылаются (иначе внешний ключ не даст вставить).
+  Числа в products (unit_id=1, supplier_id=1 …) — это id из справочников,
+  которые получились в порядке вставки (например, suppliers: 1=Kari,
+  2=Обувь для вас).
+  orders.user_id — id пользователя с тем ФИО, что было в Excel.
+  order_items — каждая пара «артикул, количество» из ячейки Excel стала
+  отдельной строкой; product_id — id товара с этим артикулом.
+
+
+#####################################################################
+                          ФАЙЛ app.py
+#####################################################################
+
+БЛОК 1. Импорт и настройки
+--------------------------
+import tkinter as tk
+from tkinter import ttk, messagebox
+import pymysql
+
+DB = dict(host="localhost", user="root", password="root", database="shoes", charset="utf8mb4")
+FONT = ("Times New Roman", 12)
+COLUMNS = ("Артикул", "Наименование", ..., "Скидка, %")
+
+Назначение: подключение библиотек и общие константы, которые используются
+во всей программе.
+  import tkinter as tk   — стандартная библиотека окон Python.
+  ttk, messagebox        — ttk даёт таблицу Treeview, messagebox — окна сообщений.
+  import pymysql         — драйвер для работы с MySQL.
+  DB = dict(...)         — параметры подключения: сервер, пользователь, пароль,
+                           база, кодировка utf8mb4 (для кириллицы).
+  FONT                   — шрифт по руководству по стилю (Times New Roman).
+  COLUMNS                — заголовки колонок таблицы товаров.
+
+
+БЛОК 2. SQL-запрос списка товаров
+---------------------------------
+PRODUCTS_SQL = """
+SELECT p.article, p.name, c.name, p.description, m.name, s.name,
+       p.price, ROUND(p.price * (100 - p.discount) / 100, 2), u.name, p.quantity, p.discount
+FROM products p
+JOIN categories c ON c.id = p.category_id
+JOIN manufacturers m ON m.id = p.manufacturer_id
+JOIN suppliers s ON s.id = p.supplier_id
+JOIN units u ON u.id = p.unit_id
+ORDER BY p.id
+"""
+
+Назначение: получает товары для таблицы на экране. Т.к. в products хранятся
+только id справочников, через JOIN подставляются их названия.
+  SELECT ...           — 11 полей в том же порядке, что и COLUMNS.
+  ROUND(p.price * (100 - p.discount) / 100, 2) — итоговая цена со скидкой.
+  FROM products p      — основная таблица, p — короткий псевдоним.
+  JOIN categories c ON c.id = p.category_id — берём название категории по id.
+  JOIN manufacturers / suppliers / units     — то же для остальных справочников.
+  ORDER BY p.id        — порядок как в исходном Excel.
+
+
+БЛОК 3. Функция query
+---------------------
+def query(sql, args=()):
+    with pymysql.connect(**DB) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, args)
+            return cursor.fetchall()
+
+Назначение: единая точка работы с БД — выполнить запрос и вернуть все строки.
+Используется при входе (проверка логина) и при выводе товаров.
+  def query(sql, args=())          — sql — текст запроса, args — параметры.
+  pymysql.connect(**DB)            — подключение с параметрами из DB;
+                                     with сам закроет подключение.
+  connection.cursor()              — курсор, через него выполняются запросы.
+  cursor.execute(sql, args)        — выполнить запрос; %s в тексте заменяются
+                                     значениями из args (защита от SQL-инъекций).
+  return cursor.fetchall()         — вернуть все строки как кортеж кортежей.
+
+
+БЛОК 4. Класс App и __init__
+----------------------------
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.geometry("1300x650")
+        self.configure(bg="#FFFFFF")
+        self.logo = tk.PhotoImage(file="Icon.png").subsample(5)
+        self.iconphoto(True, self.logo)
+        ttk.Style().configure("Treeview", font=FONT, rowheight=26)
+        ttk.Style().configure("Treeview.Heading", font=FONT)
+        self.show_login()
+
+Назначение: главное окно приложения. Одно окно, в котором по очереди
+показываются «экраны» (вход / список товаров).
+  class App(tk.Tk)            — наше окно наследуется от окна tkinter.
+  super().__init__()          — создаёт само окно.
+  geometry("1300x650")        — размер окна.
+  configure(bg="#FFFFFF")     — основной фон белый (руководство по стилю).
+  PhotoImage("Icon.png").subsample(5) — загрузка логотипа, уменьшение в 5 раз
+                                (512px -> ~100px); сохраняем в self, иначе
+                                картинка удалится сборщиком мусора.
+  iconphoto(True, self.logo)  — иконка приложения в заголовке окна.
+  ttk.Style()...Treeview      — шрифт и высота строк таблицы.
+  ...Treeview.Heading         — шрифт заголовков таблицы.
+  self.show_login()           — первое, что видит пользователь — окно входа.
+
+
+БЛОК 5. Вспомогательные методы clear, label, button
+---------------------------------------------------
+def clear(self, title):
+    self.title(f"ООО «Обувь» — {title}")
+    for widget in self.winfo_children():
+        widget.destroy()
+
+def label(self, parent, text, size=12):
+    return tk.Label(parent, text=text, font=("Times New Roman", size), bg=parent["bg"])
+
+def button(self, parent, text, command):
+    return tk.Button(parent, text=text, command=command, font=FONT, bg="#00FA9A")
+
+Назначение: убирают повторяющийся код при построении экранов.
+  clear: self.title(...)            — заголовок окна по назначению экрана.
+         for widget in winfo_children — перебор всех элементов окна…
+         widget.destroy()           — …и их удаление перед показом нового экрана.
+  label: tk.Label(...)              — надпись нужного размера шрифта;
+         bg=parent["bg"]            — фон как у родителя (белый или зелёный).
+  button: tk.Button(...)            — кнопка; command — функция по нажатию;
+         bg="#00FA9A"               — цвет акцента для целевых действий.
+
+
+БЛОК 6. Экран входа show_login
+------------------------------
+def show_login(self):
+    self.clear("Вход")
+    tk.Label(self, image=self.logo, bg="#FFFFFF").pack(pady=20)
+    self.label(self, "Логин").pack()
+    login = tk.Entry(self, font=FONT, width=30)
+    login.pack()
+    self.label(self, "Пароль").pack()
+    password = tk.Entry(self, font=FONT, width=30, show="*")
+    password.pack()
+    self.button(self, "Войти", lambda: self.login(login.get(), password.get())).pack(pady=10)
+    self.button(self, "Войти как гость", lambda: self.show_products("Гость", "Гость")).pack()
+
+Назначение: окно авторизации. Сюда же возвращает кнопка «Выход».
+  self.clear("Вход")             — очистить окно, заголовок «Вход».
+  tk.Label(image=self.logo)      — логотип компании; pack(pady=20) — с отступом.
+  self.label(self, "Логин")      — подпись поля.
+  login = tk.Entry(...)          — поле ввода логина.
+  login.pack()                   — разместить поле в окне.
+  password = tk.Entry(show="*")  — поле пароля, символы скрываются звёздочками.
+  кнопка «Войти»                 — lambda берёт текст из полей и вызывает self.login.
+  кнопка «Войти как гость»       — сразу открывает товары с ФИО и ролью «Гость».
+
+
+БЛОК 7. Авторизация login
+-------------------------
+def login(self, login, password):
+    try:
+        users = query("SELECT u.full_name, r.name FROM users u JOIN roles r ON r.id = u.role_id "
+                      "WHERE u.login = %s AND u.password = %s", (login, password))
+    except pymysql.Error as error:
+        return messagebox.showerror("Ошибка подключения", f"Не удалось подключиться к базе данных:\n{error}")
+    if not users:
+        return messagebox.showerror("Ошибка входа", "Неверный логин или пароль.\n...")
+    self.show_products(*users[0])
+
+Назначение: проверяет логин и пароль по таблице users и открывает список
+товаров с правами нужной роли.
+  try:                            — ловим ошибки подключения к БД.
+  query("SELECT u.full_name, r.name ...") — ищем пользователя с таким логином
+                                    и паролем, сразу получаем ФИО и название роли.
+  %s, (login, password)           — безопасная подстановка введённых данных.
+  except pymysql.Error            — БД недоступна / неверный пароль MySQL…
+  messagebox.showerror(...)       — …окно ошибки с заголовком и значком.
+  if not users                    — пользователь не найден -> сообщение об ошибке.
+  return                          — выходим из функции, дальше не идём.
+  self.show_products(*users[0])   — первая найденная строка (ФИО, роль)
+                                    передаётся как два аргумента.
+
+
+БЛОК 8. Экран товаров show_products — шапка
+-------------------------------------------
+def show_products(self, full_name, role):
+    self.clear("Список товаров")
+    header = tk.Frame(self, bg="#7FFF00")
+    header.pack(fill="x")
+    tk.Label(header, image=self.logo, bg="#7FFF00").pack(side="left")
+    self.label(header, "Список товаров", 18).pack(side="left", padx=10)
+    self.button(header, "Выход", self.show_login).pack(side="right", padx=10)
+    self.label(header, full_name).pack(side="right")
+    if role in ("Администратор", "Менеджер"):
+        self.button(header, "Заказы", self.placeholder).pack(side="right", padx=10)
+    if role == "Администратор":
+        self.button(header, "Добавить товар", self.placeholder).pack(side="right")
+
+Назначение: верхняя панель экрана товаров — логотип, заголовок, ФИО,
+выход и кнопки, доступные только определённым ролям.
+  self.clear("Список товаров")   — очистить окно, сменить заголовок.
+  header = tk.Frame(bg="#7FFF00") — панель с дополнительным фоном.
+  header.pack(fill="x")          — растянуть панель по ширине.
+  Label(image=self.logo)         — логотип слева.
+  self.label(..., 18)            — крупный заголовок «Список товаров».
+  кнопка «Выход»                 — справа, возвращает на окно входа.
+  self.label(header, full_name)  — ФИО в правом верхнем углу.
+  if role in (...)               — «Заказы» видят только менеджер и админ.
+  if role == "Администратор"     — «Добавить товар» видит только админ.
+  self.placeholder               — пока это заглушки.
+
+
+БЛОК 9. Экран товаров show_products — таблица
+---------------------------------------------
+    table = ttk.Treeview(self, columns=COLUMNS, show="headings")
+    for column in COLUMNS:
+        table.heading(column, text=column)
+        table.column(column, width=100)
+    table.column("Описание", width=300)
+    table.tag_configure("big_discount", background="#2E8B57")
+    table.tag_configure("out_of_stock", background="#ADD8E6")
+    for row in query(PRODUCTS_SQL):
+        tag = "out_of_stock" if row[9] == 0 else "big_discount" if row[10] > 15 else ""
+        table.insert("", "end", values=row, tags=(tag,))
+    table.pack(fill="both", expand=True)
+
+Назначение: вывод товаров из БД с подсветкой строк по условиям задания.
+  ttk.Treeview(columns=COLUMNS, show="headings") — таблица с нашими колонками,
+                                    без служебной первой колонки-дерева.
+  for column in COLUMNS            — для каждой колонки:
+  table.heading(...)               — текст заголовка;
+  table.column(..., width=100)     — ширина по умолчанию.
+  table.column("Описание", 300)    — описание длинное, колонка шире.
+  tag_configure("big_discount")    — стиль строки: зелёный фон #2E8B57.
+  tag_configure("out_of_stock")    — стиль строки: голубой фон.
+  for row in query(PRODUCTS_SQL)   — перебор товаров из БД.
+  tag = ...                        — row[9] — количество на складе, если 0 —
+                                     голубой; иначе row[10] — скидка, если
+                                     больше 15 — зелёный; иначе без подсветки.
+  table.insert("", "end", values=row, tags=(tag,)) — добавить строку в конец.
+  table.pack(fill="both", expand=True) — таблица занимает всё оставшееся место.
+
+
+БЛОК 10. Заглушка и запуск
+--------------------------
+def placeholder(self):
+    messagebox.showinfo("В разработке", "Этот раздел будет реализован в следующих модулях.")
+
+App().mainloop()
+
+Назначение: заглушка для ещё не сделанных функций и точка входа программы.
+  placeholder                    — информационное окно вместо функционала
+                                   «Заказы» и «Добавить товар».
+  App()                          — создать главное окно (сразу покажет вход).
+  .mainloop()                    — запустить цикл обработки событий: окно
+                                   работает, пока его не закроют.
