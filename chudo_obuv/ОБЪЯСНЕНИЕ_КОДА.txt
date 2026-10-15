@@ -343,7 +343,8 @@ CREATE TABLE manufacturers (...);  CREATE TABLE sizes (id ..., size DECIMAL(3,1)
 Построчно:
   last_name, first_name, patronymic — фамилия, имя, отчество (разделены по 1НФ).
   login VARCHAR(50) NOT NULL UNIQUE — логин, не может повторяться.
-  password ... DEFAULT '123456'     — пароль; если при вставке не указан, будет 123456.
+  password ... DEFAULT ''           — пароль; при вставке не указан, поэтому пустая строка —
+                                      вход по логину с пустым полем «Пароль».
   role_id INT NOT NULL              — номер роли.
   FOREIGN KEY (role_id) REFERENCES roles(id) — внешний ключ: роль должна существовать в roles.
 
