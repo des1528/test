@@ -14,6 +14,16 @@ LEFT JOIN stock st ON st.product_id = p.id
 GROUP BY p.id
 ORDER BY p.id
 """
+ORDER_COLUMNS = ("Номер заказа", "Дата", "Клиент", "Товар", "Размер", "Количество", "Цена, руб.")
+ORDERS_SQL = """
+SELECT o.id, o.order_date, CONCAT_WS(' ', u.last_name, u.first_name, u.patronymic), p.name, s.size, i.quantity, i.price
+FROM orders o
+JOIN users u ON u.id = o.user_id
+JOIN order_items i ON i.order_id = o.id
+JOIN products p ON p.id = i.product_id
+JOIN sizes s ON s.id = i.size_id
+ORDER BY o.id, i.id
+"""
 
 
 def query(sql, args=()):
@@ -66,14 +76,23 @@ class App(tk.Tk):
         tk.Label(top, text=f"{full_name} ({role})").pack(side="left", padx=10)
         tk.Button(top, text="Выход", command=self.show_login).pack(side="right")
         if role in ("Администратор", "Менеджер"):
-            tk.Button(top, text="Заказы", command=self.placeholder).pack(side="right", padx=5)
+            tk.Button(top, text="Заказы", command=lambda: self.show_orders(full_name, role)).pack(side="right", padx=5)
         if role == "Администратор":
             tk.Button(top, text="Добавить товар", command=self.placeholder).pack(side="right", padx=5)
-        table = ttk.Treeview(self, columns=COLUMNS, show="headings")
-        for column in COLUMNS:
+        self.table(COLUMNS, PRODUCTS_SQL)
+
+    def show_orders(self, full_name, role):
+        self.clear("Заказы")
+        tk.Button(self, text="Назад", command=lambda: self.show_products(full_name, role)).pack(anchor="e", padx=10, pady=5)
+        self.table(ORDER_COLUMNS, ORDERS_SQL)
+
+    def table(self, columns, sql):
+        table = ttk.Treeview(self, columns=columns, show="headings")
+        for column in columns:
             table.heading(column, text=column)
-        table.column("Наименование", width=350)
-        for row in query(PRODUCTS_SQL):
+        if "Наименование" in columns:
+            table.column("Наименование", width=350)
+        for row in query(sql):
             table.insert("", "end", values=row)
         table.pack(fill="both", expand=True, padx=10, pady=10)
 

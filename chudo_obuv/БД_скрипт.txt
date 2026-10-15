@@ -44,6 +44,25 @@ CREATE TABLE stock (
   FOREIGN KEY (size_id) REFERENCES sizes(id)
 );
 
+CREATE TABLE orders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  order_date DATE NOT NULL,
+  user_id INT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE order_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  order_id INT NOT NULL,
+  product_id INT NOT NULL,
+  size_id INT NOT NULL,
+  quantity INT NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  FOREIGN KEY (order_id) REFERENCES orders(id),
+  FOREIGN KEY (product_id) REFERENCES products(id),
+  FOREIGN KEY (size_id) REFERENCES sizes(id)
+);
+
 INSERT INTO roles (name) VALUES
 ('Администратор'),
 ('Менеджер'),
@@ -250,5 +269,48 @@ INSERT INTO stock (product_id, size_id, quantity) VALUES
 (29, 24, 1),
 (31, 24, 20),
 (31, 28, 20),
-(31, 20, 30),
-(None, None, None);
+(31, 20, 30);
+
+INSERT INTO orders (id, order_date, user_id) VALUES
+(1, '2026-04-02', 3),
+(2, '2026-04-05', 17),
+(3, '2026-04-08', 7),
+(4, '2026-04-12', 15),
+(5, '2026-04-18', 12),
+(6, '2026-04-22', 9),
+(7, '2026-04-25', 14),
+(8, '2026-04-28', 20),
+(9, '2026-05-05', 5),
+(10, '2026-05-08', 17);
+
+INSERT INTO order_items (order_id, product_id, size_id, quantity, price) VALUES
+(1, 1, 1, 1, 2190),
+(1, 7, 3, 1, 2790),
+(2, 10, 15, 1, 25000),
+(2, 13, 19, 1, 7500),
+(3, 12, 16, 1, 17000),
+(3, 20, 16, 1, 8565),
+(3, 22, 20, 1, 7795),
+(4, 17, 19, 1, 7757),
+(4, 16, 19, 1, 12340),
+(4, 15, 17, 1, 7130),
+(4, 21, 15, 1, 8765),
+(4, 11, 17, 1, 15000),
+(5, 25, 28, 1, 9567),
+(5, 29, 28, 1, 21500),
+(5, 24, 17, 1, 7890),
+(6, 26, 18, 1, 24569),
+(6, 30, 24, 1, 14567),
+(6, 31, 28, 1, 15670),
+(7, 6, 10, 1, 4290),
+(7, 1, 2, 2, 2190),
+(7, 8, 12, 1, 1690),
+(8, 28, 29, 1, 25625),
+(8, 24, 18, 3, 7890),
+(8, 23, 26, 2, 6550),
+(9, 2, 7, 1, 2490),
+(9, 5, 3, 2, 3190),
+(10, 18, 20, 1, 7550),
+(10, 15, 16, 1, 7130),
+(10, 16, 15, 1, 12340),
+(10, 21, 20, 2, 8765);

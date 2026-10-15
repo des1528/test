@@ -38,6 +38,16 @@ LEFT JOIN stock st ON st.product_id = p.id
 GROUP BY p.id
 ORDER BY p.id
 """
+ORDER_COLUMNS = ("Номер заказа", "Дата", "Клиент", "Товар", "Размер", "Количество", "Цена, руб.")
+ORDERS_SQL = """
+SELECT o.id, o.order_date, CONCAT_WS(' ', u.last_name, u.first_name, u.patronymic), p.name, s.size, i.quantity, i.price
+FROM orders o
+JOIN users u ON u.id = o.user_id
+JOIN order_items i ON i.order_id = o.id
+JOIN products p ON p.id = i.product_id
+JOIN sizes s ON s.id = i.size_id
+ORDER BY o.id, i.id
+"""
 
 Предназначение: все настройки в одном месте. DB — параметры подключения
 (используются в функции query), COLUMNS — заголовки таблицы товаров,
@@ -57,6 +67,15 @@ PRODUCTS_SQL — запрос, который собирает данные то
   LEFT JOIN stock st ON ...   — присоединяем остатки; LEFT — чтобы товар без остатков тоже показался.
   GROUP BY p.id               — группируем строки остатков по товару, чтобы SUM посчитал общее количество.
   ORDER BY p.id               — выводим в порядке id (как в исходном Excel).
+  ORDER_COLUMNS = (...)       — заголовки таблицы заказов.
+  SELECT o.id, o.order_date, CONCAT_WS(...), ... — номер и дата заказа, ФИО клиента (склеено через пробел),
+                                название товара, размер, количество и цена из строки заказа.
+  FROM orders o               — таблица заказов (шапка: номер, дата, клиент).
+  JOIN users u ON ...         — подставляем ФИО клиента по user_id.
+  JOIN order_items i ON ...   — присоединяем строки заказа (товары в заказе).
+  JOIN products p ON ...      — подставляем название товара по product_id.
+  JOIN sizes s ON ...         — подставляем размер по size_id.
+  ORDER BY o.id, i.id         — сортировка по номеру заказа, внутри — по порядку строк.
 
 
 -----------------------------------------------------------------
@@ -68,7 +87,7 @@ def query(sql, args=()):
         return cursor.fetchall()
 
 Предназначение: единая функция для любого запроса к базе. Используется при
-авторизации (метод login) и при загрузке списка товаров (show_products).
+авторизации (метод login) и при загрузке таблиц товаров и заказов (метод table).
 
 Построчно:
   def query(sql, args=()):         — принимает текст SQL и параметры (по умолчанию пустой кортеж).
@@ -193,16 +212,10 @@ class App(tk.Tk):
         tk.Label(top, text=f"{full_name} ({role})").pack(side="left", padx=10)
         tk.Button(top, text="Выход", command=self.show_login).pack(side="right")
         if role in ("Администратор", "Менеджер"):
-            tk.Button(top, text="Заказы", command=self.placeholder).pack(side="right", padx=5)
+            tk.Button(top, text="Заказы", command=lambda: self.show_orders(full_name, role)).pack(side="right", padx=5)
         if role == "Администратор":
             tk.Button(top, text="Добавить товар", command=self.placeholder).pack(side="right", padx=5)
-        table = ttk.Treeview(self, columns=COLUMNS, show="headings")
-        for column in COLUMNS:
-            table.heading(column, text=column)
-        table.column("Наименование", width=350)
-        for row in query(PRODUCTS_SQL):
-            table.insert("", "end", values=row)
-        table.pack(fill="both", expand=True, padx=10, pady=10)
+        self.table(COLUMNS, PRODUCTS_SQL)
 
 Предназначение: главный экран после входа. Сверху — логотип, ФИО и роль,
 кнопки (набор зависит от роли), ниже — таблица товаров из базы данных.
@@ -215,21 +228,61 @@ class App(tk.Tk):
   tk.Label(top, text=f"{full_name} ({role})") — ФИО и роль пользователя, например «Иванов Иван Сергеевич (Администратор)».
   tk.Button(top, text="Выход", command=self.show_login) — кнопка справа, возвращает на экран входа.
   if role in ("Администратор", "Менеджер"): — кнопку «Заказы» видят только администратор и менеджер.
-  tk.Button(... "Заказы" ...)       — кнопка-заглушка, вызывает placeholder.
+  tk.Button(... "Заказы" ...)       — открывает экран заказов; lambda передаёт ФИО и роль,
+                                      чтобы по кнопке «Назад» вернуться к товарам того же пользователя.
   if role == "Администратор":       — кнопку «Добавить товар» видит только администратор.
-  tk.Button(... "Добавить товар"...)— кнопка-заглушка.
-  table = ttk.Treeview(self, columns=COLUMNS, show="headings") — таблица со столбцами COLUMNS;
+  tk.Button(... "Добавить товар"...)— кнопка-заглушка, вызывает placeholder.
+  self.table(COLUMNS, PRODUCTS_SQL) — выводит таблицу товаров (метод table, блок 10).
+
+
+-----------------------------------------------------------------
+БЛОК 9. Метод show_orders (список заказов)
+-----------------------------------------------------------------
+    def show_orders(self, full_name, role):
+        self.clear("Заказы")
+        tk.Button(self, text="Назад", command=lambda: self.show_products(full_name, role)).pack(anchor="e", padx=10, pady=5)
+        self.table(ORDER_COLUMNS, ORDERS_SQL)
+
+Предназначение: экран заказов, открывается кнопкой «Заказы» (только у
+администратора и менеджера).
+
+Построчно:
+  def show_orders(self, full_name, role): — получает ФИО и роль, чтобы вернуть пользователя обратно.
+  self.clear("Заказы")              — очищает окно, заголовок «Чудо Обувь — Заказы».
+  tk.Button(... "Назад" ...)        — возвращает к списку товаров; anchor="e" — кнопка справа.
+  self.table(ORDER_COLUMNS, ORDERS_SQL) — выводит таблицу заказов.
+
+
+-----------------------------------------------------------------
+БЛОК 10. Метод table (вывод таблицы из базы)
+-----------------------------------------------------------------
+    def table(self, columns, sql):
+        table = ttk.Treeview(self, columns=columns, show="headings")
+        for column in columns:
+            table.heading(column, text=column)
+        if "Наименование" in columns:
+            table.column("Наименование", width=350)
+        for row in query(sql):
+            table.insert("", "end", values=row)
+        table.pack(fill="both", expand=True, padx=10, pady=10)
+
+Предназначение: общий метод, который строит таблицу по списку столбцов и
+SQL-запросу. Используется и для товаров, и для заказов, чтобы не повторять код.
+
+Построчно:
+  table = ttk.Treeview(self, columns=columns, show="headings") — таблица с переданными столбцами;
                                       show="headings" скрывает лишний служебный первый столбец.
-  for column in COLUMNS:            — для каждого столбца...
+  for column in columns:            — для каждого столбца...
   table.heading(column, text=column)— ...задаём текст заголовка.
-  table.column("Наименование", width=350) — делаем столбец с названием шире остальных.
-  for row in query(PRODUCTS_SQL):   — выполняем запрос и перебираем строки результата.
+  if "Наименование" in columns:     — только в таблице товаров есть столбец «Наименование»...
+  table.column("Наименование", width=350) — ...делаем его шире, чтобы длинные названия помещались.
+  for row in query(sql):            — выполняем запрос и перебираем строки результата.
   table.insert("", "end", values=row) — добавляем строку в конец таблицы ("" — без родителя).
   table.pack(fill="both", expand=True, ...) — таблица занимает всё оставшееся место в окне.
 
 
 -----------------------------------------------------------------
-БЛОК 9. Метод placeholder и запуск программы
+БЛОК 11. Метод placeholder и запуск программы
 -----------------------------------------------------------------
     def placeholder(self):
         messagebox.showinfo("В разработке", "Этот раздел будет реализован позже")
@@ -238,7 +291,7 @@ class App(tk.Tk):
 App().mainloop()
 
 Предназначение: placeholder — заглушка для ещё не реализованных функций
-(кнопки «Заказы», «Добавить товар»). Последняя строка запускает программу.
+(кнопка «Добавить товар»). Последняя строка запускает программу.
 
 Построчно:
   def placeholder(self):            — метод, который вызывают кнопки-заглушки.
@@ -321,7 +374,22 @@ CREATE TABLE manufacturers (...);  CREATE TABLE sizes (id ..., size DECIMAL(3,1)
 
 
 -----------------------------------------------------------------
-БЛОК 6. INSERT INTO ...
+БЛОК 6. Таблицы orders и order_items
+-----------------------------------------------------------------
+Предназначение: заказы. Шапка заказа (номер, дата, клиент) хранится один раз
+в orders, а товары заказа — отдельными строками в order_items.
+
+Построчно:
+  orders.order_date DATE        — дата заказа.
+  orders.user_id                — клиент, ссылка на users(id).
+  order_items.order_id          — к какому заказу относится строка, ссылка на orders(id).
+  order_items.product_id, size_id — какой товар и какого размера заказан.
+  order_items.quantity          — количество пар.
+  order_items.price DECIMAL(10,2) — цена за единицу на момент заказа.
+
+
+-----------------------------------------------------------------
+БЛОК 7. INSERT INTO ...
 -----------------------------------------------------------------
 Предназначение: перенос данных из Excel в базу. Порядок важен: сначала
 справочники, потом таблицы, которые на них ссылаются.
@@ -330,4 +398,5 @@ CREATE TABLE manufacturers (...);  CREATE TABLE sizes (id ..., size DECIMAL(3,1)
   INSERT INTO roles (name) VALUES ('Администратор'), ... — добавляет строки; id проставятся
                                                            автоматически по порядку (1, 2, 3).
   INSERT INTO users (..., role_id) VALUES (..., 1)       — числа в конце — id из справочника roles.
-  В products и stock аналогично стоят id категорий, подкатегорий, производителей, товаров и размеров.
+  INSERT INTO orders (id, ...)  — номер заказа указан явно, как в Excel, на него ссылается order_items.
+  В products, stock и order_items аналогично стоят id категорий, подкатегорий, производителей, товаров и размеров.
